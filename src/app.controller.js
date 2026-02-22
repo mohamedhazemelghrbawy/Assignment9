@@ -1,11 +1,13 @@
 import express from "express";
 import checkConnectionDB from "./DB/connectionDB.js";
 import userRouter from "./modules/users/user.controller.js";
+import cors from "cors";
+import { PORT } from "../config/config.service.js";
 const app = express();
-const port = 3000;
+const port = PORT;
 
 const bootstrap = () => {
-  app.use(express.json());
+  app.use(cors(), express.json());
   app.get("/", (req, res) => {
     res.status(200).json({ message: "Welcom on my App" });
   });
@@ -21,7 +23,7 @@ const bootstrap = () => {
       .json({ message: err.message, stack: err.stack });
   });
   app.listen(port, () => {
-    console.log("server running");
+    console.log(`server running on port ${port}`);
   });
 };
 export default bootstrap;

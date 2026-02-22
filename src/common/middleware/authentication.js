@@ -8,8 +8,12 @@ export const authentication = async (req, res, next) => {
   if (!authorization) {
     throw new Error("token not exist");
   }
+  const [prefix, token] = authorization.split(" ");
+  if (prefix !== "bearer") {
+    throw new Error("Invalid toden prefix");
+  }
   const decoded = verifyToken({
-    token: authorization,
+    token,
     secret_key: "secretKey",
   });
   if (!decoded || !decoded?.id) {

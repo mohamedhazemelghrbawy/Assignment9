@@ -1,6 +1,7 @@
 import { verifyToken } from "../utils/token.service.js";
 import * as db_service from "../../DB/db.service.js";
 import userModel from "../../DB/models/user.model.js";
+import { PREFIX } from "../../../config/config.service.js";
 
 export const authentication = async (req, res, next) => {
   const { authorization } = req.headers;
@@ -9,7 +10,7 @@ export const authentication = async (req, res, next) => {
     throw new Error("token not exist");
   }
   const [prefix, token] = authorization.split(" ");
-  if (prefix !== "bearer") {
+  if (prefix !== PREFIX) {
     throw new Error("Invalid toden prefix");
   }
   const decoded = verifyToken({

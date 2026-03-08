@@ -11,6 +11,7 @@ const bootstrap = () => {
   app.get("/", (req, res) => {
     res.status(200).json({ message: "Welcom on my App" });
   });
+  app.use("/uploads", express.static("uploads"));
   app.use("/users", userRouter);
   app.use("{*demo}", (req, res) => {
     throw new Error(`Url ${req.originalUrl} Not found`, { cause: 404 });

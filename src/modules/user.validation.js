@@ -1,14 +1,29 @@
 import joi from "joi";
 import { GenderEnum } from "../common/enum/user.enum.js";
+import { general_rules } from "../common/utils/generalRules.js";
 
 export const signUpSchema = {
   body: joi
     .object({
       userName: joi.string().min(4).max(50).required(),
-      email: joi.string().required(),
-      password: joi.string().required(),
-      cPassword: joi.string().valid(joi.ref("password")).required(),
-      gender: joi.string().valid(...Object.values(GenderEnum)).required9,
+      email: general_rules.email.required(),
+      password: general_rules.password.required(),
+      cPassword: general_rules.cPassword.required(),
+      gender: joi
+        .string()
+        .valid(...Object.values(GenderEnum))
+        .required(),
+    })
+    .required(),
+
+  file: general_rules.file.required(),
+
+  files: joi.array().max(7).items(general_rules.file.required()),
+
+  files: joi
+    .object({
+      attachment: joi.array().max(1).items(general_rules.file.required()),
+      attachments: joi.array().max(6).items(general_rules.file.required()),
     })
     .required(),
 };
@@ -16,11 +31,34 @@ export const signUpSchema = {
 export const logInSchema = {
   body: joi
     .object({
-      email: joi.string().email().required(),
-      password: joi.string().required(),
+      email: general_rules.email.required(),
+      password: general_rules.password.required(),
     })
     .required(),
-  query: joi.object({
-    x: joi.number().min(10).required(),
-  }),
+};
+export const shareProfileSchema = {
+  params: joi
+    .object({
+      id: general_rules.id.required(),
+    })
+    .required(),
+};
+export const updateProfileSchema = {
+  body: joi
+    .object({
+      gender: joi.string().valid(...Object.values(GenderEnum)),
+      phone: joi.string(),
+      firstName: joi.string().min(4).max(50),
+      lastName: joi.string().min(4).max(50),
+    })
+    .required(),
+};
+export const updatePasswordSchema = {
+  body: joi
+    .object({
+      newPassword: general_rules.password.required(),
+      cPassword: joi.string().valid(joi.ref("newPassword")),
+      oldPassword: joi.string(),
+    })
+    .required(),
 };

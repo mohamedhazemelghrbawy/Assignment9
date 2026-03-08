@@ -4,26 +4,27 @@ import {
   GenderEnum,
   providerEnum,
 } from "../../common/enum/user.enum.js";
+// import { required } from "joi";
 
 const userSchema = new mongoose.Schema(
   {
     firstName: {
       type: String,
-      required: true,
+      // required: true,
       minLength: 2,
       maxLength: 20,
       trim: true,
     },
     lastName: {
       type: String,
-      required: true,
+      // required: true,
       minLength: 2,
       maxLength: 20,
       trim: true,
     },
     email: {
       type: String,
-      required: true,
+      // required: true,
       unique: true,
       trim: true,
     },
@@ -47,9 +48,29 @@ const userSchema = new mongoose.Schema(
     },
     phone: {
       type: String,
-      require: true,
+      required: true,
     },
-    profilePicture: String,
+    profilePicture: {
+      secure_url: {
+        type: String,
+        required: true,
+      },
+      public_id: {
+        type: String,
+        required: true,
+      },
+    },
+    coverPicture: [
+      {
+        secure_url: {
+          type: String,
+          required: true,
+        },
+        public_id: {
+          type: String,
+        },
+      },
+    ],
     confirmed: {
       type: Boolean,
     },

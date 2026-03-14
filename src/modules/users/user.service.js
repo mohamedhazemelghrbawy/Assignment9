@@ -27,7 +27,12 @@ import {
 import cloudinary from "../../common/utils/cloudinary.js";
 import fs from "node:fs";
 import { randomUUID } from "crypto";
-import { keys, set } from "../../DB/redis/redis.service.js";
+import {
+  deleteKey,
+  get,
+  keys,
+  setValue,
+} from "../../DB/redis/redis.service.js";
 //
 
 //
@@ -224,6 +229,12 @@ export const login = async (req, res) => {
   });
 };
 export const getProfile = async (req, res, next) => {
+  const key = `profile::${req.user._id}`;
+  const userExist = await get(key);
+  if (userExist) {
+    return successResponse({ res, data: userExist });
+  }
+  await setValue({ key, value: req.user, ttl: 60 });
   successResponse({
     res,
     message: "done",
@@ -320,7 +331,7 @@ export const updateProfile = async (req, res, next) => {
       },
       options: { new: true },
     });
-
+    await deleteKey(`profile::${req.user._id}`);
     successResponse({
       res,
       message: "Profile updated successfully",

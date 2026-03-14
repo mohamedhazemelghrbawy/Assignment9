@@ -3,6 +3,7 @@ import checkConnectionDB from "./DB/connectionDB.js";
 import userRouter from "./modules/users/user.controller.js";
 import cors from "cors";
 import { PORT } from "../config/config.service.js";
+import { redisConnection } from "./DB/redis/redis.db.js";
 const app = express();
 const port = PORT;
 
@@ -17,6 +18,7 @@ const bootstrap = () => {
     throw new Error(`Url ${req.originalUrl} Not found`, { cause: 404 });
   });
   checkConnectionDB();
+  redisConnection();
   app.use((err, req, res, next) => {
     console.log(err.stack);
     res

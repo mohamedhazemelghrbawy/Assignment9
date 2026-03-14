@@ -7,12 +7,12 @@ import * as UV from "../user.validation.js";
 import { multer_enum } from "../../common/enum/multer.enum.js";
 const userRouter = Router();
 
-userRouter.post(
-  "/signup",
-  multer_host(multer_enum.image).single("attachment"),
-  validation(UV.signUpSchema),
-  US.signUp,
-);
+// userRouter.post(
+//   "/signup",
+//   multer_host(multer_enum.image).single("attachment"),
+//   validation(UV.signUpSchema),
+//   US.signUp,
+// );
 
 // userRouter.post(
 //   "/signup",
@@ -22,17 +22,14 @@ userRouter.post(
 //   }).array("attachments", 3),
 //   US.signUp,
 // );
-// userRouter.post(
-//   "/signup",
-//   multer_local({
-//     custom_path: "users/videos",
-//     custom_type: [...multer_enum.image, ...multer_enum.video],
-//   }).fields([
-//     { name: "atachment", maxCount: 1 },
-//     { name: "atachments", maxCount: 8 },
-//   ]),
-//   US.signUp,
-// );
+userRouter.post(
+  "/signup",
+  multer_host([...multer_enum.image]).fields([
+    { name: "attachment", maxCount: 1 },
+    { name: "attachments", maxCount: 2 },
+  ]),
+  US.signUp,
+);
 userRouter.post("/signup/gmail", US.signUpWithGmail);
 
 userRouter.post("/login", validation(UV.logInSchema), US.login);
@@ -58,5 +55,12 @@ userRouter.get(
   validation(UV.shareProfileSchema),
   US.shareProfile,
 );
+userRouter.post(
+  "/removeProfilePicture",
+  authentication,
+  US.removeProfilePicture,
+);
+
+userRouter.get("/logout", authentication, US.logout);
 
 export default userRouter;

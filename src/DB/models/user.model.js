@@ -35,7 +35,6 @@ const userSchema = new mongoose.Schema(
       },
       trim: true,
     },
-
     gender: {
       type: String,
       enum: Object.values(GenderEnum),
@@ -74,10 +73,15 @@ const userSchema = new mongoose.Schema(
     confirmed: {
       type: Boolean,
     },
+    changeCredential: Date,
     role: {
       type: String,
       enum: Object.values(roleEnum),
       default: roleEnum.system,
+    },
+    visitCount: {
+      type: Number,
+      default: 0,
     },
   },
   {

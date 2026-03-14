@@ -6,7 +6,7 @@ export const get_key = ({ userId }) => {
   return ` revoke_token::${userId}`;
 };
 
-export const set = async ({ key, value, ttl } = {}) => {
+export const setValue = async ({ key, value, ttl } = {}) => {
   try {
     const data = typeof value === "string" ? value : JSON.stringify(value);
     return ttl

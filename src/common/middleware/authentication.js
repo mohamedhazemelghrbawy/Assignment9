@@ -3,7 +3,7 @@ import * as db_service from "../../DB/db.service.js";
 import userModel from "../../DB/models/user.model.js";
 import { PREFIX, SECRET_KEY } from "../../../config/config.service.js";
 // import revokeTokenModel from "../../DB/models/revokeToken.model.js";
-import { get } from "../../DB/redis/redis.service.js";
+import { get, get_key, revoked_key } from "../../DB/redis/redis.service.js";
 
 export const authentication = async (req, res, next) => {
   const { authorization } = req.headers;
@@ -14,12 +14,12 @@ export const authentication = async (req, res, next) => {
 
   const [prefix, token] = authorization.split(" ");
 
-  console.log(prefix);
-  console.log(PREFIX);
-  console.log(token);
-  console.log(SECRET_KEY);
+  // console.log(prefix);
+  // console.log(PREFIX);
+  // console.log(token);
+  // console.log(SECRET_KEY);
   if (prefix != PREFIX) {
-    throw new Error("Invalid toden prefix");
+    throw new Error("Invalid token prefix");
   }
   const decoded = verifyToken({
     token,
@@ -30,8 +30,7 @@ export const authentication = async (req, res, next) => {
   }
   const user = await db_service.findOne({
     model: userModel,
-    id: decoded.id,
-    select: "-password",
+    filter: { _id: decoded.id },
   });
   if (!user) {
     throw new Error("user not exist", { cause: 400 });

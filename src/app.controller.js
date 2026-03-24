@@ -4,6 +4,7 @@ import userRouter from "./modules/users/user.controller.js";
 import cors from "cors";
 import { PORT } from "../config/config.service.js";
 import { redisConnection } from "./DB/redis/redis.db.js";
+
 const app = express();
 const port = PORT;
 

@@ -43,7 +43,7 @@ const userSchema = new mongoose.Schema(
     provider: {
       type: String,
       enum: Object.values(providerEnum),
-      default: providerEnum.user,
+      default: providerEnum.system,
     },
     phone: {
       type: String,
@@ -52,11 +52,11 @@ const userSchema = new mongoose.Schema(
     profilePicture: {
       secure_url: {
         type: String,
-        required: true,
+        // required: true,
       },
       public_id: {
         type: String,
-        required: true,
+        // required: true,
       },
     },
     coverPicture: [
@@ -72,12 +72,18 @@ const userSchema = new mongoose.Schema(
     ],
     confirmed: {
       type: Boolean,
+      default: false,
+    },
+
+    twoStepVerification: {
+      type: Boolean,
+      default: false,
     },
     changeCredential: Date,
     role: {
       type: String,
       enum: Object.values(roleEnum),
-      default: roleEnum.system,
+      default: roleEnum.user,
     },
     visitCount: {
       type: Number,
@@ -99,6 +105,14 @@ userSchema
     this.firstName = firstName;
     this.lastName = lastName;
   });
+
+userSchema.index(
+  { createdAt: 1 },
+  {
+    expireAfterSeconds: 30,
+    partialFilterExpression: { confirmed: false },
+  },
+);
 
 const userModel = mongoose.model("user", userSchema);
 

@@ -5,6 +5,7 @@ import { multer_host, multer_local } from "../../common/middleware/multer.js";
 import { validation } from "../../common/middleware/validation.js";
 import * as UV from "../user.validation.js";
 import { multer_enum } from "../../common/enum/multer.enum.js";
+import { authorization } from "../../common/middleware/authorization.js";
 const userRouter = Router();
 
 // userRouter.post(
@@ -30,7 +31,17 @@ userRouter.post(
   ]),
   US.signUp,
 );
-userRouter.post("/signup/gmail", US.signUpWithGmail);
+userRouter.post("/signup/gmail", US.signUpWithGmail); // ❌
+
+userRouter.patch("/confirm-email", authentication, US.confirmedEmail);
+
+userRouter.patch("/resend-otp", authentication, US.resendOtp);
+
+userRouter.patch(
+  "/signup/confirm-gmail",
+  validation(UV.confirmEmailSchmea),
+  US.confirmedEmail,
+);
 
 userRouter.post("/login", validation(UV.logInSchema), US.login);
 
@@ -39,6 +50,10 @@ userRouter.get("/profile", authentication, US.getProfile);
 userRouter.patch(
   "/updateProfile",
   authentication,
+  multer_host([...multer_enum.image]).fields([
+    { name: "attachment", maxCount: 1 },
+    { name: "attachments", maxCount: 2 },
+  ]),
   validation(UV.updateProfileSchema),
   US.updateProfile,
 );
@@ -46,9 +61,28 @@ userRouter.patch(
 userRouter.patch(
   "/updatePassword",
   authentication,
+  authorization(["user"]),
   validation(UV.updatePasswordSchema),
   US.updatePassword,
 );
+
+userRouter.post("/send-forget-password", authentication, US.sendForgetOtp);
+
+userRouter.post("/forget-password", authentication, US.forgetPassword);
+
+userRouter.patch(
+  "/send-two-stepVerification-otp",
+  authentication,
+  US.send_2stepVerification_otp,
+);
+
+userRouter.patch(
+  "/confirm-two-step-verification",
+  authentication,
+  US.confirmTwoStepVerification,
+);
+
+userRouter.patch("/send-confirmed-login-otp", US.sendLoginOtp);
 
 userRouter.get(
   "/share_profile/:id",
@@ -61,6 +95,6 @@ userRouter.post(
   US.removeProfilePicture,
 );
 
-userRouter.get("/logout", authentication, US.logout);
+userRouter.post("/logout", authentication, US.logout);
 
 export default userRouter;

@@ -62,3 +62,11 @@ export const updatePasswordSchema = {
     })
     .required(),
 };
+export const confirmEmailSchmea = {
+  body: joi
+    .object({
+      email: general_rules.email.required(),
+      otp: joi.string().length(6).required(),
+    })
+    .required(),
+};

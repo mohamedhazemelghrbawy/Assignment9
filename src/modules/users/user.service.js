@@ -28,24 +28,38 @@ import cloudinary from "../../common/utils/cloudinary.js";
 import fs from "node:fs";
 import { randomUUID } from "crypto";
 import {
+  block_otp_key,
   deleteKey,
   get,
   keys,
+  max_otp_key,
+  otp_key,
   setValue,
+  revoked_key,
+  ttlTimer,
+  incr,
+  block_password_key,
+  max_password_key,
 } from "../../DB/redis/redis.service.js";
+import { generateOTP, sendEmail } from "../../common/utils/email/send.email.js";
+import { sendOtp } from "../../common/utils/email/otp.resend.js";
 //
 
-//
-
-//
 export const signUp = async (req, res, next) => {
   let uploadedFiles = [];
+
   try {
-    const { userName, email, password, gender, phone } = req.body;
+    console.time("signup-total");
+
+    console.time("check-email");
+    const { userName, email, password, gender, phone, role } = req.body;
 
     if (await db_service.findOne({ model: userModel, filter: { email } })) {
       throw new Error("Email already exists");
     }
+    console.timeEnd("check-email");
+
+    console.time("validate-files");
 
     const newImages = req.files?.attachments?.length || 0;
 
@@ -53,11 +67,19 @@ export const signUp = async (req, res, next) => {
       throw new Error("Cover pictures must be exactly 2");
     }
 
+    console.timeEnd("validate-files");
+
+    console.time("upload-profile");
+
     const { secure_url, public_id } = await cloudinary.uploader.upload(
       req.files.attachment[0].path,
       { folder: "sara7a_app/profilePicture" },
     );
-    uploadedFiles.push(public_id);
+    console.timeEnd("upload-profile");
+    // uploadedFiles.push(public_id);
+
+    console.time("upload-covers");
+    console.time("create-user");
     // let uploadedFiles = [];
     let arr_paths = [];
     for (const file of req.files.attachments) {
@@ -67,7 +89,7 @@ export const signUp = async (req, res, next) => {
       );
 
       arr_paths.push({ secure_url, public_id });
-      uploadedFiles.push(public_id);
+      // uploadedFiles.push(public_id);
     }
 
     const user = await db_service.create({
@@ -77,15 +99,64 @@ export const signUp = async (req, res, next) => {
         email,
         password: Hash({ plainText: password, salt_rounds: SALT_ROUNDS }),
         gender,
-        phone: encryptAsymmetric(phone),
-        // phone: encrypt(phone),
+        // phone: encryptAsymmetric(phone),
+        phone: encrypt(phone),
+        role,
 
         profilePicture: { secure_url, public_id },
         coverPicture: arr_paths,
       },
     });
+    console.timeEnd("create-user");
 
-    successResponse({ res, status: 201, data: user });
+    console.time("generate-otp");
+
+    const otp = await generateOTP();
+    const type = "signupOtp";
+    console.timeEnd("generate-otp");
+
+    console.time("redis-save");
+
+    await setValue({
+      key: otp_key({ email, type }),
+      value: Hash({ plainText: `${otp}` }),
+      ttl: 60 * 4,
+    });
+
+    await setValue({
+      key: max_otp_key({ email, type }),
+      value: 1,
+      ttl: 60 * 5,
+    });
+
+    console.timeEnd("redis-save");
+
+    console.time("send-email");
+
+    await sendEmail(
+      user.email,
+      "welcome to saraha app",
+      `<h1>Hello ${userName}</h1>
+   <p>welcome to saraha app your otp is: ${otp}</p>`,
+    );
+    console.timeEnd("send-email");
+
+    console.time("send-response");
+
+    const userResponse = {
+      _id: user._id,
+      userName: user.userName,
+      email: user.email,
+      gender: user.gender,
+      profilePicture: user.profilePicture,
+      coverPicture: user.coverPicture,
+      createdAt: user.createdAt,
+    };
+
+    successResponse({ res, status: 201, data: userResponse });
+    console.timeEnd("send-response");
+
+    console.timeEnd("signup-total");
   } catch (err) {
     console.log("Signup Error:", err);
     if (req.files) {
@@ -109,6 +180,67 @@ export const signUp = async (req, res, next) => {
     next(err);
   }
 };
+
+export const confirmedEmail = async (req, res, next) => {
+  const { email, otp } = req.body;
+
+  const otpExist = await get(otp_key({ email, type: "signupOtp" }));
+  if (!otpExist) {
+    throw new Error("otp exired or incorrect");
+  }
+  if (!Compare({ plainText: otp, cipherText: otpExist })) {
+    throw new Error("Invalid otp");
+  }
+  const isConfirmed = req.user.confirmed;
+  if (isConfirmed) {
+    throw new Error("Account already confirmed");
+  }
+  const user = await db_service.findOndeAndUpdate({
+    model: userModel,
+    filter: {
+      email,
+      confirmed: false,
+      provider: providerEnum.system,
+    },
+    update: { confirmed: true },
+  });
+  if (!user) {
+    console.log(email, user.confirmed, user.provider);
+    throw new Error("user not exist");
+  }
+  await deleteKey(otp_key({ email }));
+  successResponse({
+    res,
+    message: "confirmed done",
+  });
+};
+
+export const resendOtp = async (req, res, next) => {
+  const { email } = req.body;
+
+  const user = await db_service.findOne({
+    model: userModel,
+    filter: {
+      email,
+      provider: providerEnum.system,
+    },
+  });
+  if (!user || user.confirmed) {
+    throw new Error("user not exist or already confirmed");
+  }
+
+  await sendOtp({
+    email,
+    userName: user.userName,
+    message: "welcome to saraha app your otp is",
+    type: "signupOtp",
+  });
+  // await deleteKey(otp_key({ email }));
+  // await deleteKey(max_otp_key({ email }));
+  // await deleteKey(block_otp_key({ email }));
+  successResponse({ res, message: "OTP resent successfully" });
+};
+
 export const refresh_token = async (req, res, next) => {
   const { authorization } = req.headers;
 
@@ -153,6 +285,7 @@ export const refresh_token = async (req, res, next) => {
     data: { ...user._doc, access_token },
   });
 };
+
 export const signUpWithGmail = async (req, res, next) => {
   const { idToken } = req.body;
 
@@ -195,8 +328,9 @@ export const signUpWithGmail = async (req, res, next) => {
     data: { ...user._doc, access_token },
   });
 };
+
 export const login = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, otp } = req.body;
   const user = await db_service.findOne({
     model: userModel,
     filter: { email },
@@ -204,30 +338,186 @@ export const login = async (req, res) => {
   if (!user) {
     throw new Error("Invalid Email");
   }
-  console.log(password);
-  console.log(user.password);
+
+  const blockedTime = await ttlTimer(block_password_key({ email }));
+
+  if (blockedTime > 0) {
+    throw new Error(
+      `you have executed the maximum number of tries , please try again after ${blockedTime} seconds`,
+    );
+  }
 
   if (!Compare({ plainText: password, cipherText: user.password })) {
+    let maxPass = Number(await get(max_password_key({ email }))) || 0;
+
+    if (maxPass >= 5) {
+      await setValue({
+        key: block_password_key({ email }),
+        value: 1,
+        ttl: 60 * 5,
+      });
+
+      throw new Error("you have executed the maximum number of tries");
+    }
+
+    await setValue({
+      key: max_password_key({ email }),
+      value: maxPass + 1,
+      ttl: 60 * 5,
+    });
+
     throw new Error("Invalid password", { cause: 400 });
   }
+  await deleteKey(max_password_key({ email }));
+  await deleteKey(block_password_key({ email }));
+
   const jwtid = randomUUID();
 
-  const access_token = GenerateToken({
-    payload: { id: user._id, email: user.email },
-    secret_key: SECRET_KEY,
-    options: { expiresIn: 60 * 20, jwtid },
-  });
-  const refresh_token = GenerateToken({
-    payload: { id: user._id, email: user.email },
-    secret_key: REFRESH_SECRET_KEY,
-    options: { expiresIn: "1y", jwtid },
-  });
-  successResponse({
-    res,
-    message: "success login",
-    data: { ...user._doc, access_token, refresh_token },
-  });
+  if (!user.twoStepVerification) {
+    const access_token = GenerateToken({
+      payload: { id: user._id, email: user.email },
+      secret_key: SECRET_KEY,
+      options: { expiresIn: 60 * 20, jwtid },
+    });
+
+    const refresh_token = GenerateToken({
+      payload: { id: user._id, email: user.email },
+      secret_key: REFRESH_SECRET_KEY,
+      options: { expiresIn: "1y", jwtid },
+    });
+
+    successResponse({
+      res,
+      message: "success login",
+      data: { ...user._doc, access_token, refresh_token },
+    });
+  } else {
+    if (!otp) {
+      throw new Error("OTP are required for 2-step verification");
+    }
+    const type = "confirm-login";
+
+    const storedOtpHash = await get(otp_key({ email, type }));
+    if (!storedOtpHash) {
+      throw new Error("OTP expired or invalid");
+    }
+
+    if (!Compare({ plainText: otp, cipherText: storedOtpHash })) {
+      throw new Error("Invalid OTP");
+    }
+    const access_token = GenerateToken({
+      payload: { id: user._id, email: user.email },
+      secret_key: SECRET_KEY,
+      options: { expiresIn: 60 * 20, jwtid },
+    });
+
+    const refresh_token = GenerateToken({
+      payload: { id: user._id, email: user.email },
+      secret_key: REFRESH_SECRET_KEY,
+      options: { expiresIn: "1y", jwtid },
+    });
+    await deleteKey(otp_key({ email, type }));
+    await deleteKey(max_otp_key({ email, type }));
+    successResponse({
+      res,
+      message: "success login",
+      data: { ...user._doc, access_token, refresh_token },
+    });
+  }
 };
+
+export const send_2stepVerification_otp = async (req, res, next) => {
+  if (!req.user) {
+    throw new Error("User not found");
+  }
+  if (req.user.twoStepVerification) {
+    throw new Error("2-step verification already enabled");
+  }
+
+  const email = req.user.email;
+  const userName = req.user.userName;
+
+  const type = "enable-2SV";
+  await sendOtp({
+    email,
+    userName,
+    message: "Your OTP to enable 2-step-verification is: ",
+    type,
+  });
+
+  successResponse({ res, message: "OTP sent successfully" });
+};
+
+export const confirmTwoStepVerification = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      throw new Error("Email or OTP are required");
+    }
+    const type = "enable-2SV";
+
+    const storedOtpHash = await get(otp_key({ email, type }));
+
+    if (!storedOtpHash) {
+      throw new Error("OTP expired or invalid");
+    }
+
+    if (!Compare({ plainText: otp, cipherText: storedOtpHash })) {
+      throw new Error("Invalid OTP");
+    }
+
+    const user = await db_service.findOndeAndUpdate({
+      model: userModel,
+      filter: { email, twoStepVerification: { $ne: true } },
+      update: { twoStepVerification: true },
+    });
+
+    if (!user) {
+      throw new Error("User not found or  2-step already enabled");
+    }
+
+    await deleteKey(otp_key({ email }));
+    await deleteKey(max_otp_key({ email }));
+
+    successResponse({
+      res,
+      message: "2-step-verification enable",
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const sendLoginOtp = async (req, res, next) => {
+  const { email } = req.body;
+
+  const user = await db_service.findOne({
+    model: userModel,
+    filter: { email },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+  if (!user.twoStepVerification) {
+    throw new Error("2-step verification not enabled");
+  }
+
+  // const email = req.user.email;
+  // const userName = user.userName;
+
+  const type = "confirm-login";
+  await sendOtp({
+    email,
+    userName: user.userName,
+    message: "Your OTP to confirm login is: ",
+    type,
+  });
+
+  successResponse({ res, message: "OTP sent successfully" });
+};
+
 export const getProfile = async (req, res, next) => {
   const key = `profile::${req.user._id}`;
   const userExist = await get(key);
@@ -235,42 +525,59 @@ export const getProfile = async (req, res, next) => {
     return successResponse({ res, data: userExist });
   }
   await setValue({ key, value: req.user, ttl: 60 });
+
   successResponse({
     res,
     message: "done",
     data: req.user,
   });
 };
+
 export const shareProfile = async (req, res, next) => {
   const { id } = req.params;
-  const user = await db_service.findOne({
+  const user = await db_service.findOndeAndUpdate({
     model: userModel,
     filter: { _id: id },
-    options: { select: "-password", select: "-visitCount" },
+    update: { $inc: { visitCount: 1 } },
+    options: { returnDocument: "after" },
   });
+
   if (!user) {
     throw new Error("user not found");
   }
-  user.visitCount = (user.visitCount || 0) + 1;
-  await user.save();
+  // const updatedUser
+  // await user.save();
   // user.phone = decryptAsymmetric(user.phone);
+  user.phone = decrypt(user.phone);
+
+  const userResponse = {
+    _id: user._id,
+    userName: user.userName,
+    email: user.email,
+    gender: user.gender,
+    phone: user.phone,
+    profilePicture: user.profilePicture,
+    coverPicture: user.coverPicture,
+    createdAt: user.createdAt,
+  };
   successResponse({
     res,
     message: "done",
-    data: { ...user._doc },
+    data: userResponse,
   });
 };
+
 export const updateProfile = async (req, res, next) => {
+  let profilePicture;
+  let arr_paths = [];
+  let uploadedFiles = [];
+
   try {
     let { firstName, lastName, gender, phone } = req.body;
 
     if (phone) {
       phone = encrypt(phone);
     }
-
-    let profilePicture;
-    let arr_paths = [];
-    let uploadedFiles = [];
 
     const user = await db_service.findOne({
       model: userModel,
@@ -294,9 +601,7 @@ export const updateProfile = async (req, res, next) => {
       profilePicture = { secure_url, public_id };
       uploadedFiles.push(public_id);
     }
-    const newImages = req.files?.attachments?.length || 0;
-
-    if (newImages !== 2) {
+    if (req.files?.attachments && req.files.attachments.length !== 2) {
       throw new Error("Cover pictures must be exactly 2");
     }
     if (req.files?.attachments && user.coverPicture?.length) {
@@ -329,7 +634,6 @@ export const updateProfile = async (req, res, next) => {
         ...(profilePicture && { profilePicture }),
         ...(arr_paths.length && { coverPicture: arr_paths }),
       },
-      options: { new: true },
     });
     await deleteKey(`profile::${req.user._id}`);
     successResponse({
@@ -350,8 +654,9 @@ export const updateProfile = async (req, res, next) => {
     next(err);
   }
 };
+
 export const updatePassword = async (req, res, next) => {
-  let { oldPassword, newPassword } = req.body;
+  let { oldPassword } = req.body;
 
   if (!Compare({ plainText: oldPassword, cipherText: req.user.password })) {
     throw new Error("invalid old password");
@@ -365,15 +670,83 @@ export const updatePassword = async (req, res, next) => {
   });
 };
 
-export const removeProfilePicture = async (req, res, next) => {
+export const sendForgetOtp = async (req, res, next) => {
+  const { email } = req.body;
+
+  const user = await db_service.findOne({
+    model: userModel,
+    filter: { email },
+  });
+  if (!user) throw new Error("User not found");
+
+  await sendOtp({
+    email,
+    userName: user.userName,
+    message: "Your OTP to reset password is",
+    type: "forgetPassword",
+  });
+  // await deleteKey(otp_key({ email, type }));
+  // await deleteKey(max_otp_key({ email, type }));
+  // await deleteKey(block_otp_key({ email, type }));
+  successResponse({ res, message: "OTP sent successfully" });
+};
+
+export const forgetPassword = async (req, res, next) => {
   try {
-    const user = await db_service.findOne({
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      throw new Error("Email, OTP, and new password are required");
+    }
+    const type = "forgetPassword";
+    const storedOtpHash = await get(otp_key({ email, type }));
+    if (!storedOtpHash) {
+      throw new Error("OTP expired or invalid");
+    }
+
+    if (!Compare({ plainText: otp, cipherText: storedOtpHash })) {
+      throw new Error("Invalid OTP");
+    }
+
+    const hash = Hash({ plainText: newPassword });
+
+    const user = await db_service.findOndeAndUpdate({
       model: userModel,
-      filter: { _id: req.user._id },
+      filter: { email },
+      update: { password: hash },
     });
+
     if (!user) throw new Error("User not found");
 
-    if (user.profilePicture?.path) {
+    // await deleteKey(otp_key({ email }));
+    // await deleteKey(max_otp_key({ email }));
+
+    successResponse({
+      res,
+      message: "Password updated successfully",
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const removeProfilePicture = async (req, res, next) => {
+  try {
+    // const user = await db_service.findOne({
+    //   model: userModel,
+    //   filter: { _id: req.user._id },
+    // });
+    // if (!user) throw new Error("User not found");
+
+    const user = req.user;
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+    if (!user.profilePicture || !user.profilePicture.public_id) {
+      throw new Error("there is no images to delete");
+    }
+    if (user.profilePicture?.public_id) {
       await cloudinary.uploader.destroy(user.profilePicture.public_id);
 
       // fs.unlink(user.profilePicture?.path, (err) => {
@@ -382,26 +755,46 @@ export const removeProfilePicture = async (req, res, next) => {
     }
     user.profilePicture = null;
     await user.save();
+
     successResponse({ res, message: "Profile image removed successfully" });
   } catch (error) {
+    // console.log(req.user.email);
     console.log("error in delete profile picture", error);
+    next(error);
   }
 };
 
 export const logout = async (req, res, next) => {
-  const { flag } = req.query;
+  try {
+    const { flag } = req.query;
 
-  if (flag == "all") {
-    req.user.changeCredential = new Date();
-    await req.user.save();
+    if (flag === "all") {
+      req.user.changeCredential = new Date();
+      await req.user.save();
 
-    await db_service.deleteMany(await keys(get_key({ userId: req.user._id })));
-  } else {
-    await set({
-      key: revoked_key({ userId: req.user._id, jti: req.decoded.jti }),
-      value: `${(req.decoded, jti)}`,
-      ttl: req.decoded.exp - Math.floor(Date.now() / 1000),
-    });
+      const pattern = `revoked::${req.user._id}::*`;
+      const userKeys = await keys(pattern);
+
+      if (userKeys.length) {
+        await db_service.deleteMany(userKeys);
+      }
+    } else {
+      const ttl = req.decoded.exp - Math.floor(Date.now() / 1000);
+      if (ttl <= 0) {
+        return next(new Error("Token already expired"));
+      }
+
+      await setValue({
+        key: revoked_key({
+          userId: req.user._id,
+          jti: req.decoded.jti,
+        }),
+        value: req.decoded.jti,
+        ttl,
+      });
+    }
+    successResponse({ res, message: "Logged out successfully" });
+  } catch (error) {
+    next(error);
   }
-  successResponse({ res });
 };

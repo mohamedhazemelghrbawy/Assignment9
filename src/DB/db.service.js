@@ -49,10 +49,9 @@ export const findOndeAndUpdate = async ({
   filter = {},
   update = {},
 } = {}) => {
-  const doc = model.findOndeAndUpdate(filter, update, {
-    new: true,
+  const doc = model.findOneAndUpdate(filter, update, {
+    returnDocument: "after",
     runValidators: true,
-    ...options,
   });
 
   return await doc.exec();

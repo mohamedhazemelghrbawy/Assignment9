@@ -1,9 +1,24 @@
 import { redisClient } from "./redis.db.js";
 export const revoked_key = ({ userId, jti }) => {
-  return ` revoke_token::${userId}::${jti}`;
+  return `revoke_token::${userId}::${jti}`;
 };
 export const get_key = ({ userId }) => {
-  return ` revoke_token::${userId}`;
+  return `revoke_token::${userId}`;
+};
+export const otp_key = ({ email, type } = {}) => {
+  return `${type}::${email}`;
+};
+export const max_otp_key = ({ email, type } = {}) => {
+  return `${type}::${email}::max_tries`;
+};
+export const block_otp_key = ({ email, type } = {}) => {
+  return `${type}::${email}::block`;
+};
+export const max_password_key = ({ email }) => {
+  return `password::${email}::max_tries`;
+};
+export const block_password_key = ({ email }) => {
+  return `password::${email}::block`;
 };
 
 export const setValue = async ({ key, value, ttl } = {}) => {
@@ -41,7 +56,7 @@ export const get = async (key) => {
   }
 };
 
-export const ttl = async (key) => {
+export const ttlTimer = async (key) => {
   try {
     return await redisClient.ttl(key);
   } catch (error) {
@@ -78,5 +93,14 @@ export const keys = async (pattern = "*") => {
     return await redisClient.keys(`${pattern}`);
   } catch (error) {
     console.log("error to get keys from redis", error);
+  }
+};
+
+export const incr = async (key) => {
+  try {
+    if (!key.length) return 0;
+    return await redisClient.incr(key);
+  } catch (error) {
+    console.log("error to increment operation", error);
   }
 };

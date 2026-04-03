@@ -6,7 +6,8 @@ import { validation } from "../../common/middleware/validation.js";
 import * as UV from "../user.validation.js";
 import { multer_enum } from "../../common/enum/multer.enum.js";
 import { authorization } from "../../common/middleware/authorization.js";
-const userRouter = Router();
+import messageRouter from "../message/message.controller.js";
+const userRouter = Router({ caseSensitive: true, strict: true });
 
 // userRouter.post(
 //   "/signup",
@@ -23,6 +24,9 @@ const userRouter = Router();
 //   }).array("attachments", 3),
 //   US.signUp,
 // );
+
+userRouter.use("/:userId/messages", messageRouter);
+
 userRouter.post(
   "/signup",
   multer_host([...multer_enum.image]).fields([
@@ -47,6 +51,8 @@ userRouter.post("/login", validation(UV.logInSchema), US.login);
 
 userRouter.get("/profile", authentication, US.getProfile);
 
+userRouter.post("/refresh-token", US.refresh_token);
+
 userRouter.patch(
   "/updateProfile",
   authentication,
@@ -68,7 +74,7 @@ userRouter.patch(
 
 userRouter.post("/send-forget-password", authentication, US.sendForgetOtp);
 
-userRouter.post("/forget-password", authentication, US.forgetPassword);
+userRouter.post("/forget-password", US.forgetPassword);
 
 userRouter.patch(
   "/send-two-stepVerification-otp",

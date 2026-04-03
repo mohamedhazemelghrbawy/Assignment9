@@ -43,23 +43,19 @@ import {
 } from "../../DB/redis/redis.service.js";
 import { generateOTP, sendEmail } from "../../common/utils/email/send.email.js";
 import { sendOtp } from "../../common/utils/email/otp.resend.js";
+import { emailTemplate } from "../../common/utils/email/email.template.js";
+import { eventEmitter } from "../../common/utils/email/email.event.js";
 //
 
 export const signUp = async (req, res, next) => {
   let uploadedFiles = [];
 
   try {
-    console.time("signup-total");
-
-    console.time("check-email");
     const { userName, email, password, gender, phone, role } = req.body;
 
     if (await db_service.findOne({ model: userModel, filter: { email } })) {
       throw new Error("Email already exists");
     }
-    console.timeEnd("check-email");
-
-    console.time("validate-files");
 
     const newImages = req.files?.attachments?.length || 0;
 
@@ -67,19 +63,13 @@ export const signUp = async (req, res, next) => {
       throw new Error("Cover pictures must be exactly 2");
     }
 
-    console.timeEnd("validate-files");
-
-    console.time("upload-profile");
-
     const { secure_url, public_id } = await cloudinary.uploader.upload(
       req.files.attachment[0].path,
       { folder: "sara7a_app/profilePicture" },
     );
-    console.timeEnd("upload-profile");
+
     // uploadedFiles.push(public_id);
 
-    console.time("upload-covers");
-    console.time("create-user");
     // let uploadedFiles = [];
     let arr_paths = [];
     for (const file of req.files.attachments) {
@@ -107,41 +97,29 @@ export const signUp = async (req, res, next) => {
         coverPicture: arr_paths,
       },
     });
-    console.timeEnd("create-user");
-
-    console.time("generate-otp");
 
     const otp = await generateOTP();
-    const type = "signupOtp";
-    console.timeEnd("generate-otp");
 
-    console.time("redis-save");
+    eventEmitter.emit("confirmEmail", async () => {
+      await sendEmail({
+        to: user.email,
+        subject: "Welcome to Sara7a App",
+        html: emailTemplate(user.firstName, otp),
+      });
 
-    await setValue({
-      key: otp_key({ email, type }),
-      value: Hash({ plainText: `${otp}` }),
-      ttl: 60 * 4,
+      const type = "signupOtp";
+      await setValue({
+        key: otp_key({ email, type }),
+        value: Hash({ plainText: `${otp}` }),
+        ttl: 60 * 4,
+      });
+
+      await setValue({
+        key: max_otp_key({ email, type }),
+        value: 1,
+        ttl: 60 * 4,
+      });
     });
-
-    await setValue({
-      key: max_otp_key({ email, type }),
-      value: 1,
-      ttl: 60 * 5,
-    });
-
-    console.timeEnd("redis-save");
-
-    console.time("send-email");
-
-    await sendEmail(
-      user.email,
-      "welcome to saraha app",
-      `<h1>Hello ${userName}</h1>
-   <p>welcome to saraha app your otp is: ${otp}</p>`,
-    );
-    console.timeEnd("send-email");
-
-    console.time("send-response");
 
     const userResponse = {
       _id: user._id,
@@ -154,11 +132,7 @@ export const signUp = async (req, res, next) => {
     };
 
     successResponse({ res, status: 201, data: userResponse });
-    console.timeEnd("send-response");
-
-    console.timeEnd("signup-total");
   } catch (err) {
-    console.log("Signup Error:", err);
     if (req.files) {
       for (const key in req.files) {
         req.files[key].forEach((file) => {
@@ -180,7 +154,6 @@ export const signUp = async (req, res, next) => {
     next(err);
   }
 };
-
 export const confirmedEmail = async (req, res, next) => {
   const { email, otp } = req.body;
 
@@ -195,7 +168,7 @@ export const confirmedEmail = async (req, res, next) => {
   if (isConfirmed) {
     throw new Error("Account already confirmed");
   }
-  const user = await db_service.findOndeAndUpdate({
+  const user = await db_service.findOneAndUpdate({
     model: userModel,
     filter: {
       email,
@@ -205,7 +178,6 @@ export const confirmedEmail = async (req, res, next) => {
     update: { confirmed: true },
   });
   if (!user) {
-    console.log(email, user.confirmed, user.provider);
     throw new Error("user not exist");
   }
   await deleteKey(otp_key({ email }));
@@ -427,7 +399,9 @@ export const login = async (req, res) => {
 };
 
 export const send_2stepVerification_otp = async (req, res, next) => {
-  if (!req.user) {
+  const { emaill } = req.body;
+
+  if (req.user.email != emaill) {
     throw new Error("User not found");
   }
   if (req.user.twoStepVerification) {
@@ -467,7 +441,7 @@ export const confirmTwoStepVerification = async (req, res, next) => {
       throw new Error("Invalid OTP");
     }
 
-    const user = await db_service.findOndeAndUpdate({
+    const user = await db_service.findOneAndUpdate({
       model: userModel,
       filter: { email, twoStepVerification: { $ne: true } },
       update: { twoStepVerification: true },
@@ -535,7 +509,7 @@ export const getProfile = async (req, res, next) => {
 
 export const shareProfile = async (req, res, next) => {
   const { id } = req.params;
-  const user = await db_service.findOndeAndUpdate({
+  const user = await db_service.findOneAndUpdate({
     model: userModel,
     filter: { _id: id },
     update: { $inc: { visitCount: 1 } },
@@ -623,7 +597,7 @@ export const updateProfile = async (req, res, next) => {
       }
     }
 
-    const updatedUser = await db_service.findOndeAndUpdate({
+    const updatedUser = await db_service.findOneAndUpdate({
       model: userModel,
       filter: { _id: req.user._id },
       update: {
@@ -656,14 +630,15 @@ export const updateProfile = async (req, res, next) => {
 };
 
 export const updatePassword = async (req, res, next) => {
-  let { oldPassword } = req.body;
+  let { oldPassword, newPassword } = req.body;
 
   if (!Compare({ plainText: oldPassword, cipherText: req.user.password })) {
     throw new Error("invalid old password");
   }
   const hash = Hash({ plainText: newPassword });
   req.user.password = hash;
-  req.user.save();
+  req.user.changeCredential = new Date();
+  await req.user.save();
   successResponse({
     res,
     message: "done",
@@ -678,12 +653,12 @@ export const sendForgetOtp = async (req, res, next) => {
     filter: { email },
   });
   if (!user) throw new Error("User not found");
-
+  const type = "forgetPassword";
   await sendOtp({
     email,
     userName: user.userName,
-    message: "Your OTP to reset password is",
-    type: "forgetPassword",
+    message: "to reset password is",
+    type,
   });
   // await deleteKey(otp_key({ email, type }));
   // await deleteKey(max_otp_key({ email, type }));
@@ -710,20 +685,20 @@ export const forgetPassword = async (req, res, next) => {
 
     const hash = Hash({ plainText: newPassword });
 
-    const user = await db_service.findOndeAndUpdate({
+    const user = await db_service.findOneAndUpdate({
       model: userModel,
       filter: { email },
-      update: { password: hash },
+      update: { password: hash, changeCredential: new Date() },
     });
 
     if (!user) throw new Error("User not found");
 
-    // await deleteKey(otp_key({ email }));
-    // await deleteKey(max_otp_key({ email }));
+    await deleteKey(otp_key({ email }));
+    await deleteKey(max_otp_key({ email, type }));
 
     successResponse({
       res,
-      message: "Password updated successfully",
+      message: "Password reset successfully",
     });
   } catch (err) {
     next(err);

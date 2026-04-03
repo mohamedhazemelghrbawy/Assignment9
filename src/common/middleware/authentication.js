@@ -36,7 +36,7 @@ export const authentication = async (req, res, next) => {
     throw new Error("user not exist", { cause: 400 });
   }
 
-  if (user?.changeCredential?.getTime() > decoded.iat) {
+  if (user?.changeCredential?.getTime() > decoded.iat * 1000) {
     throw new Error("token expired");
   }
 

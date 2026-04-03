@@ -109,7 +109,7 @@ userSchema
 userSchema.index(
   { createdAt: 1 },
   {
-    expireAfterSeconds: 30,
+    expireAfterSeconds: 60 * 60 * 24,
     partialFilterExpression: { confirmed: false },
   },
 );

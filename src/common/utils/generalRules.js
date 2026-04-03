@@ -1,4 +1,10 @@
 import joi from "joi";
+import { Types } from "mongoose";
+
+const customId = (v, h) => {
+  const value = Types.ObjectId.isValid(v);
+  return value ? value : h.message("id is not valid");
+};
 
 export const general_rules = {
   email: joi.string().required(),
@@ -12,6 +18,7 @@ export const general_rules = {
     const isValid = Types.ObjectId.isValid(value);
     return isValid ? value : helper.message("invalid id");
   }),
+  id: joi.string().custom(customId),
   file: joi
     .object({
       fieldname: joi.string(),

@@ -34,7 +34,7 @@ export const multer_host = (custom_type = []) => {
 
   function fileFilter(req, file, cb) {
     if (!custom_type.includes(file.mimetype)) {
-      cb(new Error("Invalid file type"));
+      return cb(new Error("Invalid file type"));
     }
     cb(null, true);
   }

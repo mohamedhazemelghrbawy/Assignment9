@@ -59,9 +59,9 @@ export const signUp = async (req, res, next) => {
 
     const newImages = req.files?.attachments?.length || 0;
 
-    if (newImages !== 2) {
-      throw new Error("Cover pictures must be exactly 2");
-    }
+    // if (newImages !== 2) {
+    //   throw new Error("Cover pictures must be exactly 2");
+    // }
 
     const { secure_url, public_id } = await cloudinary.uploader.upload(
       req.files.attachment[0].path,
@@ -702,6 +702,49 @@ export const forgetPassword = async (req, res, next) => {
     });
   } catch (err) {
     next(err);
+  }
+};
+
+export const sendForgetPasswordLink = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    const user = await db_service.findOne({
+      model: userModel,
+      filter: { email },
+    });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const jwtid = randomUUID();
+
+    const token = GenerateToken({
+      payload: { id: user._id, email: user.email },
+      secret_key: SECRET_KEY,
+      options: { expiresIn: 60 * 20, jwtid },
+    });
+
+    const resetLink = `http://16.171.130.107/reset-password?token=${token}`;
+
+    await sendEmail({
+      to: email,
+      subject: "Reset your password",
+      html: `Click this link to reset your password: ${resetLink}`,
+    });
+    //     await sendEmail({
+    //   to: user.email,
+    //   subject: "Welcome to Sara7a App",
+    //   html: emailTemplate(user.firstName, otp),
+    // });
+
+    res.status(200).json({
+      message: "Forget password link sent successfully",
+      resetLink,
+    });
+  } catch (error) {
+    console.error("Error in sendForgetPasswordLink:", error);
+    next(error);
   }
 };
 

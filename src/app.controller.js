@@ -14,7 +14,7 @@ const port = PORT;
 const bootstrap = () => {
   const limiter = rateLimit({
     windowMs: 60 * 5 * 1000,
-    limit: 10,
+    limit: 100,
     // message:""
   });
 

@@ -14,10 +14,6 @@ export const authentication = async (req, res, next) => {
 
   const [prefix, token] = authorization.split(" ");
 
-  // console.log(prefix);
-  // console.log(PREFIX);
-  // console.log(token);
-  // console.log(SECRET_KEY);
   if (prefix != PREFIX) {
     throw new Error("Invalid token prefix");
   }
